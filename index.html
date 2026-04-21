@@ -14,22 +14,20 @@
         import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Firebase Configuration
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // Global variables for App
         window.db = db;
+        window.auth = auth;
         window.appId = appId;
-        // Updated Path Rule: /artifacts/{appId}/public/data/{collectionName}
         window.collectionPath = ['artifacts', appId, 'public', 'data', 'promotions'];
 
-        // Initialize Auth and App
         const init = async () => {
             try {
+                // RULE 3: Auth Before Queries
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -52,135 +50,172 @@
 
     <style>
         :root {
-            --fc-today-bg-color: rgba(255, 165, 0, 0.1);
-            --fc-event-border-color: transparent;
+            --fc-today-bg-color: rgba(249, 115, 22, 0.05);
             --fc-button-bg-color: #f97316;
             --fc-button-border-color: #f97316;
             --fc-button-hover-bg-color: #ea580c;
         }
-        .fc-event { cursor: pointer; padding: 3px 6px; border-radius: 6px; font-size: 0.85em; border: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .fc-toolbar-title { text-transform: capitalize; font-weight: bold; color: #431407; }
+        .fc-event { cursor: pointer; padding: 4px 8px; border-radius: 8px; font-size: 0.85em; border: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.08); transition: transform 0.1s; }
+        .fc-event:hover { transform: scale(1.02); }
+        .fc-toolbar-title { text-transform: capitalize; font-weight: 800; color: #1e293b; }
         .modal-active { display: flex !important; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #fdba74; border-radius: 10px; }
+        .region-filter-btn.active { background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); color: #f97316; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .loading-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.7); z-index: 100; align-items: center; justify-content: center; backdrop-blur: 2px; }
+        .loading-overlay.active { display: flex; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="bg-[#f8fafc] text-slate-900 font-sans">
 
-    <div class="max-w-[1500px] mx-auto p-4 md:p-6">
+    <div id="loading" class="loading-overlay">
+        <div class="flex flex-col items-center gap-4">
+            <div class="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="font-bold text-orange-600">Đang lưu dữ liệu...</p>
+        </div>
+    </div>
+
+    <div class="max-w-[1600px] mx-auto p-4 md:p-8">
         <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
-                <h1 class="text-3xl font-black text-orange-600 tracking-tight">PROMO HUB <span class="text-slate-400 font-light">2026</span></h1>
-                <p class="text-slate-500 font-medium text-sm text-green-600">● Cloud Sync Active</p>
+                <h1 class="text-4xl font-black text-slate-900 tracking-tight">PROMO HUB <span class="text-orange-500">2026</span></h1>
+                <p class="text-slate-500 font-semibold text-sm flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Hệ thống đang đồng bộ trực tuyến
+                </p>
             </div>
-            <div class="flex gap-3">
-                <button onclick="toggleModal('eventModal')" class="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-orange-200 transition-all flex items-center gap-2 text-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Tạo chiến dịch mới
-                </button>
-            </div>
+            <button onclick="toggleModal('eventModal')" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-orange-200 transition-all flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Tạo chiến dịch mới
+            </button>
         </header>
 
-        <!-- Filters -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-            <div class="lg:col-span-3 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-center gap-6">
-                <div class="flex items-center gap-3">
-                    <span class="text-xs font-black text-slate-400 uppercase tracking-wider">Khu vực:</span>
-                    <div class="flex bg-slate-100 p-1 rounded-lg">
-                        <button onclick="filterByRegion('all')" class="region-filter-btn active bg-white shadow-sm px-3 py-1 rounded-md text-xs font-bold transition-all">Tất cả</button>
-                        <button onclick="filterByRegion('Nationwide')" class="region-filter-btn px-3 py-1 rounded-md text-xs font-bold text-slate-500 transition-all">Nationwide</button>
-                        <button onclick="filterByRegion('South')" class="region-filter-btn px-3 py-1 rounded-md text-xs font-bold text-slate-500 transition-all">South</button>
+        <!-- Global Filters Panel -->
+        <div class="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-8">
+            <div class="xl:col-span-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-center gap-8">
+                <div class="space-y-2">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Thương hiệu</span>
+                    <select id="brandFilter" onchange="applyFilters()" class="bg-slate-50 border-none rounded-xl px-4 py-2 text-sm font-bold focus:ring-2 focus:ring-orange-300 outline-none w-48">
+                        <option value="all">Tất cả thương hiệu</option>
+                        <option value="Al Fresco's">Al Fresco's</option>
+                        <option value="Pepperonis">Pepperonis</option>
+                        <option value="Lola's">Lola's</option>
+                        <option value="Miss Q's">Miss Q's</option>
+                    </select>
+                </div>
+
+                <div class="space-y-2">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Khu vực</span>
+                    <div class="flex bg-slate-100 p-1 rounded-xl">
+                        <button onclick="filterByRegion('all')" class="region-filter-btn active px-4 py-1.5 rounded-lg text-xs font-black transition-all">Tất cả</button>
+                        <button onclick="filterByRegion('Nationwide')" class="region-filter-btn px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all">Nationwide</button>
+                        <button onclick="filterByRegion('North')" class="region-filter-btn px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all">North</button>
+                        <button onclick="filterByRegion('Middle')" class="region-filter-btn px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all">Middle</button>
+                        <button onclick="filterByRegion('South')" class="region-filter-btn px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all">South</button>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 border-l pl-6 border-slate-100">
-                    <span class="text-xs font-black text-slate-400 uppercase tracking-wider">Dịch vụ:</span>
-                    <select id="serviceFilter" onchange="applyFilters()" class="bg-slate-100 border-none rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-orange-300 outline-none">
-                        <option value="all">Tất cả</option>
+
+                <div class="space-y-2">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Dịch vụ</span>
+                    <select id="serviceFilter" onchange="applyFilters()" class="bg-slate-50 border-none rounded-xl px-4 py-2 text-sm font-bold focus:ring-2 focus:ring-orange-300 outline-none w-44">
+                        <option value="all">Tất cả dịch vụ</option>
                         <option value="Dine-in">Dine-in</option>
-                        <option value="Deli">Deli</option>
-                        <option value="Merchandising">Merchandising</option>
+                        <option value="Delivery/Takeaway">Delivery/Takeaway</option>
+                        <option value="Other">Other</option>
                     </select>
                 </div>
             </div>
-            <div class="bg-orange-600 p-5 rounded-2xl shadow-lg shadow-orange-100 text-white flex justify-between items-center">
+
+            <div class="bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white flex justify-between items-center">
                 <div>
-                    <p class="text-[10px] font-bold opacity-80 uppercase">Tổng chiến dịch</p>
-                    <h3 id="totalEvents" class="text-3xl font-black">0</h3>
+                    <p class="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1">Đang hiển thị</p>
+                    <h3 id="totalEvents" class="text-4xl font-black">0</h3>
                 </div>
-                <div class="bg-white/20 p-3 rounded-xl"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg></div>
+                <div class="bg-white/10 p-4 rounded-2xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                </div>
             </div>
         </div>
 
-        <!-- Main -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div class="lg:col-span-1 space-y-6">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h2 class="text-sm font-black text-slate-800 mb-4 uppercase flex items-center gap-2">
-                        <span class="w-2 h-5 bg-orange-500 rounded-full"></span> Danh sách
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div class="lg:col-span-1">
+                <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 sticky top-8">
+                    <h2 class="text-sm font-black text-slate-800 mb-6 uppercase tracking-tighter flex items-center gap-2">
+                        <span class="w-2 h-6 bg-orange-500 rounded-full"></span> Danh sách chiến dịch
                     </h2>
-                    <div id="eventSummaryList" class="space-y-3 max-h-[600px] overflow-y-auto pr-2"></div>
+                    <div id="eventSummaryList" class="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto pr-2"></div>
                 </div>
             </div>
             <div class="lg:col-span-3">
-                <div id="calendar" class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"></div>
+                <div id="calendar" class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 min-h-[700px]"></div>
             </div>
         </div>
     </div>
 
     <!-- Modal -->
-    <div id="eventModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden z-50 items-center justify-center p-4">
-        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div class="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-center">
-                <h3 id="modalTitle" class="text-xl font-black text-slate-800">Chi tiết chiến dịch</h3>
+    <div id="eventModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-md hidden z-50 items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div class="bg-slate-50 border-b border-slate-100 p-8 flex justify-between items-center">
+                <h3 id="modalTitle" class="text-2xl font-black text-slate-800">Chi tiết chiến dịch</h3>
                 <button onclick="toggleModal('eventModal')" class="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-full shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <form id="eventForm" class="p-6 space-y-5">
+            <form id="eventForm" class="p-8 space-y-6">
                 <input type="hidden" id="m_id">
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Tên chiến dịch</label>
-                    <input type="text" id="m_title" required class="w-full bg-slate-50 border-none rounded-xl p-3 focus:ring-2 focus:ring-orange-500 outline-none font-bold">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Bắt đầu</label>
-                        <input type="date" id="m_start" required class="w-full bg-slate-50 border-none rounded-xl p-3 text-sm">
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Thương hiệu</label>
+                        <select id="m_brand" required class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-orange-500">
+                            <option value="Al Fresco's">Al Fresco's</option>
+                            <option value="Pepperonis">Pepperonis</option>
+                            <option value="Lola's">Lola's</option>
+                            <option value="Miss Q's">Miss Q's</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên chiến dịch</label>
+                        <input type="text" id="m_title" required class="w-full bg-slate-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-orange-500 outline-none font-bold text-lg">
                     </div>
                     <div>
-                        <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Kết thúc</label>
-                        <input type="date" id="m_end" required class="w-full bg-slate-50 border-none rounded-xl p-3 text-sm">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ngày bắt đầu</label>
+                        <input type="date" id="m_start" required class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold">
                     </div>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Khu vực</label>
-                        <select id="m_region" class="w-full bg-slate-50 border-none rounded-xl p-3 text-sm font-bold">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ngày kết thúc</label>
+                        <input type="date" id="m_end" required class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Khu vực</label>
+                        <select id="m_region" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold">
                             <option value="Nationwide">Nationwide</option>
-                            <option value="South">South</option>
                             <option value="North">North</option>
+                            <option value="Middle">Middle</option>
+                            <option value="South">South</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Dịch vụ</label>
-                        <select id="m_service" class="w-full bg-slate-50 border-none rounded-xl p-3 text-sm font-bold">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Dịch vụ</label>
+                        <select id="m_service" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-bold">
+                            <option value="All">All Services</option>
                             <option value="Dine-in">Dine-in</option>
-                            <option value="Deli">Deli</option>
-                            <option value="Dine-in & Deli">Dine-in & Deli</option>
-                            <option value="Merchandising">Merchandising</option>
+                            <option value="Delivery/Takeaway">Delivery/Takeaway</option>
+                            <option value="Other">Other</option>
                         </select>
                     </div>
                 </div>
+
                 <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase mb-1">Ghi chú</label>
-                    <textarea id="m_desc" rows="3" class="w-full bg-slate-50 border-none rounded-xl p-3 text-sm"></textarea>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Mô tả & Ghi chú</label>
+                    <textarea id="m_desc" rows="3" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-orange-500" placeholder="Chi tiết khuyến mãi..."></textarea>
                 </div>
-                <div class="flex justify-between items-center pt-4 border-t border-slate-100">
-                    <button type="button" id="deleteBtn" class="hidden text-red-500 font-bold text-sm">Xóa</button>
-                    <div class="flex gap-3 ml-auto">
-                        <button type="button" onclick="toggleModal('eventModal')" class="bg-slate-100 px-5 py-2 rounded-xl font-bold">Đóng</button>
-                        <button type="submit" class="bg-orange-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg shadow-orange-100">Lưu lại</button>
+
+                <div class="flex justify-between items-center pt-6 border-t border-slate-100">
+                    <button type="button" id="deleteBtn" class="hidden text-red-500 font-black text-sm uppercase tracking-widest hover:bg-red-50 px-4 py-2 rounded-xl transition-all">Xóa chiến dịch</button>
+                    <div class="flex gap-4 ml-auto">
+                        <button type="button" onclick="toggleModal('eventModal')" class="bg-slate-100 hover:bg-slate-200 px-6 py-3 rounded-2xl font-bold transition-all text-sm">Hủy</button>
+                        <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg shadow-orange-100 transition-all text-sm">Lưu dữ liệu</button>
                     </div>
                 </div>
             </form>
@@ -194,6 +229,13 @@
         let allPromotions = [];
         let currentRegionFilter = 'all';
         let currentUser = null;
+
+        const BRAND_COLORS = {
+            "Al Fresco's": "#f97316",
+            "Pepperonis": "#ef4444",
+            "Lola's": "#a855f7",
+            "Miss Q's": "#ec4899"
+        };
 
         window.startApp = function(user) {
             currentUser = user;
@@ -212,92 +254,116 @@
             });
             calendar.render();
 
-            // Real-time Cloud Sync - Only start after Auth
             const colRef = collection(window.db, ...window.collectionPath);
             onSnapshot(colRef, (snapshot) => {
                 allPromotions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 applyFilters();
             }, (error) => {
-                console.error("Firestore Listen error:", error);
+                console.error("Firestore Listen Error:", error);
+                // If it's a permission error, it's usually because Rule 1 was violated or Auth hasn't finished
             });
         };
 
         window.applyFilters = function() {
             if (!calendar) return;
             const service = document.getElementById('serviceFilter').value;
+            const brand = document.getElementById('brandFilter').value;
+
             const filtered = allPromotions.filter(p => {
                 const matchRegion = currentRegionFilter === 'all' || p.region === currentRegionFilter;
-                const matchService = service === 'all' || p.service.includes(service);
-                return matchRegion && matchService;
+                const matchService = service === 'all' || p.service === service || p.service === 'All';
+                const matchBrand = brand === 'all' || p.brand === brand;
+                return matchRegion && matchService && matchBrand;
             });
             
-            calendar.removeAllEvents();
-            calendar.addEvents(filtered);
+            calendar.getEvents().forEach(event => event.remove());
+            filtered.forEach(data => calendar.addEvent(data));
             updateDashboard(filtered);
         };
 
         window.filterByRegion = function(region) {
             currentRegionFilter = region;
             document.querySelectorAll('.region-filter-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.innerText === (region === 'all' ? 'Tất cả' : region));
-                btn.classList.toggle('bg-white', btn.innerText === (region === 'all' ? 'Tất cả' : region));
-                btn.classList.toggle('shadow-sm', btn.innerText === (region === 'all' ? 'Tất cả' : region));
+                const isMatch = (region === 'all' && btn.innerText === 'Tất cả') || btn.innerText === region;
+                btn.classList.toggle('active', isMatch);
+                btn.classList.toggle('text-slate-500', !isMatch);
             });
             applyFilters();
         };
 
         async function updateEventInCloud(fcEvent) {
-            if (!currentUser) return;
-            const promoRef = doc(window.db, ...window.collectionPath, fcEvent.id);
+            if (!window.auth.currentUser) return;
             try {
+                const promoRef = doc(window.db, ...window.collectionPath, fcEvent.id);
                 await setDoc(promoRef, {
                     title: fcEvent.title,
                     start: fcEvent.startStr.split('T')[0],
                     end: fcEvent.endStr ? fcEvent.endStr.split('T')[0] : fcEvent.startStr.split('T')[0],
                     region: fcEvent.extendedProps.region,
                     service: fcEvent.extendedProps.service,
-                    description: fcEvent.extendedProps.description,
+                    brand: fcEvent.extendedProps.brand,
+                    description: fcEvent.extendedProps.description || "",
                     color: fcEvent.backgroundColor
                 }, { merge: true });
-            } catch (e) {
-                console.error("Update error:", e);
+            } catch (err) {
+                console.error("Cloud Update Error:", err);
             }
         }
 
         document.getElementById('eventForm').onsubmit = async function(e) {
             e.preventDefault();
-            if (!currentUser) return;
+            if (!window.auth.currentUser) {
+                alert("Bạn cần được xác thực để lưu dữ liệu.");
+                return;
+            }
             
-            const id = document.getElementById('m_id').value || String(Date.now());
-            const region = document.getElementById('m_region').value;
-            const color = region === 'South' ? '#f97316' : (region === 'North' ? '#a855f7' : '#3b82f6');
-            
-            const promoRef = doc(window.db, ...window.collectionPath, id);
+            const loader = document.getElementById('loading');
+            loader.classList.add('active');
+
             try {
+                const id = document.getElementById('m_id').value || "promo_" + Date.now();
+                const brand = document.getElementById('m_brand').value;
+                const color = BRAND_COLORS[brand] || '#64748b';
+                
+                const promoRef = doc(window.db, ...window.collectionPath, id);
                 await setDoc(promoRef, {
+                    brand: brand,
                     title: document.getElementById('m_title').value,
                     start: document.getElementById('m_start').value,
                     end: document.getElementById('m_end').value,
-                    region: region,
+                    region: document.getElementById('m_region').value,
                     service: document.getElementById('m_service').value,
-                    description: document.getElementById('m_desc').value,
+                    description: document.getElementById('m_desc').value || "",
                     color: color
                 });
+
                 toggleModal('eventModal');
-            } catch (e) {
-                console.error("Save error:", e);
+            } catch (err) {
+                console.error("Save Error:", err);
+                // Create a simple custom message instead of alert
+                const errorMsg = document.createElement('div');
+                errorMsg.className = "fixed top-4 right-4 bg-red-500 text-white p-4 rounded-xl shadow-xl z-[100]";
+                errorMsg.innerText = "Lỗi khi lưu dữ liệu. Vui lòng thử lại.";
+                document.body.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 3000);
+            } finally {
+                loader.classList.remove('active');
             }
         };
 
         document.getElementById('deleteBtn').onclick = async function() {
-            if (!currentUser) return;
+            if (!window.auth.currentUser) return;
             const id = document.getElementById('m_id').value;
-            if (id && confirm('Xóa chiến dịch này?')) {
+            if (id) {
+                const loader = document.getElementById('loading');
+                loader.classList.add('active');
                 try {
                     await deleteDoc(doc(window.db, ...window.collectionPath, id));
                     toggleModal('eventModal');
-                } catch (e) {
-                    console.error("Delete error:", e);
+                } catch (err) {
+                    console.error("Delete Error:", err);
+                } finally {
+                    loader.classList.remove('active');
                 }
             }
         };
@@ -314,13 +380,20 @@
         };
 
         window.openEditModal = function(ev) {
+            document.getElementById('modalTitle').innerText = "Chỉnh sửa chiến dịch";
             document.getElementById('m_id').value = ev.id;
+            document.getElementById('m_brand').value = ev.extendedProps.brand || "Al Fresco's";
             document.getElementById('m_title').value = ev.title;
             document.getElementById('m_start').value = ev.startStr.split('T')[0];
+            
+            // Fix end date logic for FullCalendar (it's exclusive)
+            let endDate = ev.end ? new Date(ev.end) : new Date(ev.start);
+            if (ev.end) endDate.setDate(endDate.getDate() - 0); 
             document.getElementById('m_end').value = ev.endStr ? ev.endStr.split('T')[0] : ev.startStr.split('T')[0];
-            document.getElementById('m_region').value = ev.extendedProps.region;
-            document.getElementById('m_service').value = ev.extendedProps.service;
-            document.getElementById('m_desc').value = ev.extendedProps.description;
+            
+            document.getElementById('m_region').value = ev.extendedProps.region || "Nationwide";
+            document.getElementById('m_service').value = ev.extendedProps.service || "All";
+            document.getElementById('m_desc').value = ev.extendedProps.description || "";
             document.getElementById('deleteBtn').classList.remove('hidden');
             toggleModal('eventModal');
         };
@@ -331,11 +404,22 @@
             list.innerHTML = '';
             events.sort((a,b) => new Date(a.start) - new Date(b.start)).forEach(ev => {
                 const div = document.createElement('div');
-                div.className = "p-4 bg-slate-50 border border-slate-100 hover:border-orange-200 transition-all cursor-pointer rounded-2xl mb-2";
-                div.onclick = () => { calendar.gotoDate(ev.start); openEditModal(calendar.getEventById(ev.id)); };
+                div.className = "p-5 bg-white border border-slate-100 hover:border-orange-200 transition-all cursor-pointer rounded-3xl shadow-sm hover:shadow-md group";
+                div.onclick = () => { 
+                    calendar.gotoDate(ev.start); 
+                    const fcEv = calendar.getEventById(ev.id);
+                    if (fcEv) openEditModal(fcEv);
+                };
                 div.innerHTML = `
-                    <div class="flex justify-between mb-2"><span class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style="background:${ev.color}22; color:${ev.color}">${ev.region}</span><span class="text-[10px] text-slate-400 font-bold">${ev.start}</span></div>
-                    <h4 class="text-xs font-black text-slate-700">${ev.title}</h4>
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-tight" style="background:${ev.color}15; color:${ev.color}">${ev.brand}</span>
+                        <span class="text-[10px] text-slate-400 font-bold tracking-tighter">${ev.start}</span>
+                    </div>
+                    <h4 class="text-sm font-bold text-slate-800 leading-tight group-hover:text-orange-500 transition-colors">${ev.title}</h4>
+                    <div class="mt-3 flex gap-2">
+                        <span class="text-[9px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">${ev.region}</span>
+                        <span class="text-[9px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">${ev.service}</span>
+                    </div>
                 `;
                 list.appendChild(div);
             });
